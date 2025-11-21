@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 import urllib3
 
 from pyplanet.apps.config import AppConfig
@@ -14,25 +15,34 @@ class ChatRelay(AppConfig):
         super().__init__(*args, **kwargs)
 
         self.endpoint_url = 'http://localhost:3000'
+        self.http_timeout = 1.0
+
         self.setting_endpoint_url = Setting(
-            'chat_relay_webhook_url', 'ChatRelay webhook URL', Setting.CAT_GENERAL, type=str,
+            'chat_relay_webhook_url',
+            'ChatRelay webhook URL',
+            Setting.CAT_GENERAL,
+            type=str,
             default=self.endpoint_url,
             description='Endpoint URL to receive player chat messages.'
         )
 
-        self.http_timeout = 1.0
         self.setting_http_timeout = Setting(
-            'chat_relay_http_timeout', 'ChatRelay request timeout', Setting.CAT_GENERAL, type=float,
+            'chat_relay_http_timeout',
+            'ChatRelay request timeout',
+            Setting.CAT_GENERAL,
+            type=float,
             default=self.http_timeout,
-            description='For how long to wait for delivery to webhook'
+            description='How long to wait for sending chat messages.'
         )
 
         self.http = urllib3.PoolManager()
         self.logger = logging.getLogger(self.name)
 
     async def on_start(self):
-        await self.context.setting.register(self.setting_endpoint_url)
-        await self.context.setting.register(self.setting_http_timeout)
+        await self.context.setting.register(
+            self.setting_endpoint_url,
+            self.setting_http_timeout
+        )
 
         player_signals.player_chat.register(self.on_player_chat)
 
@@ -54,7 +64,8 @@ class ChatRelay(AppConfig):
             "is_command": is_command,
         }
 
-        self.send_message_sync(payload)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.send_message_sync, payload)
 
     def send_message_sync(self, payload):
         self.logger.info(f"Sending message from {payload['login']} to {self.endpoint_url}")
